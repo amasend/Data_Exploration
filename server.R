@@ -109,7 +109,7 @@ fetch_data <- function(datastore, dane_o_przestepczosciach_1999_2017, base_url){
   return(datastore)
 }
 
-scatter_plot <- function(obszar=NULL, data){
+scatter_plot <- function(obszar=NULL, data, mode=NULL, source = "A"){
   if (is.null(obszar)){
     frag_data <- data[which(data$`Jednostka organizacyjna Policji` != 
                               as.character(data$`Jednostka organizacyjna Policji`[1])),]
@@ -117,23 +117,27 @@ scatter_plot <- function(obszar=NULL, data){
     frag_data$Rok <- as.numeric(gsub(" ", "", as.character(frag_data$Rok)))
     # do nazw kolumn musze odwolywac sie z '~' znakiem, inaczej nie dziala... taka implementacja plot_ly 
     # (problem z rozmiarami heatmapy)
-    plot_ly(frag_data, x = ~Rok, y = ~`Postepowania wszczete`, type="scatter", 
-            text = paste("Jednostka:", obszar),
+    plot_ly(frag_data, x = ~Rok, y = ~`Postepowania wszczete`, key = ~`Jednostka organizacyjna Policji`, type="scatter",
+            text = paste("Jednostka:", obszar), source = source,
             mode = "markers", color = ~`Jednostka organizacyjna Policji`, size = ~`Postepowania wszczete`)
   } else{
     # scatter_plot - podajesz nazwe obszaru ktory chcesz uwzglednic w wyswietlaniu
     # rysuje wykres kropkowany, interaktywny
     print("wszedlem")
-    frag_data <- data[which(data$`Jednostka organizacyjna Policji` == obszar),]
+    frag_data <- data[which(as.character(data$`Jednostka organizacyjna Policji`) == obszar),]
     # odwolania do nazw column musza byc za pomoca indeksow a nie nazw -> zle kodowanie (mozna poprawic w przyszlosci)
     frag_data$`Postepowania wszczete` <- as.numeric(gsub(" ", "", as.character(frag_data[,3])))
     frag_data$Rok <- as.numeric(gsub(" ", "", as.character(frag_data$Rok)))
     # do nazw kolumn musze odwolywac sie z '~' znakiem, inaczej nie dziala... taka implementacja plot_ly 
     # (problem z rozmiarami heatmapy)
-    plot_ly(frag_data, x = ~Rok, y = ~`Postepowania wszczete`, type="scatter", 
-            text = paste("Jednostka:", obszar),
-            mode = "markers", color = ~`Postepowania wszczete`, size = ~`Postepowania wszczete`) #%>%
-    #add_trace(y = ~`Postepowania wszczete`, mode = 'lines')
+    if (is.null(mode)){
+      plot_ly(frag_data, x = ~Rok, y = ~`Postepowania wszczete`, type="scatter",
+              text = paste("Jednostka:", obszar),
+              mode = "markers", color = ~`Postepowania wszczete`, size = ~`Postepowania wszczete`)
+    } else{
+      plot_ly(frag_data, x = ~Rok, y = ~`Postepowania wszczete`, type="scatter", mode = "lines+markers",
+              mode = "markers", color = ~`Postepowania wszczete`, size = ~`Postepowania wszczete`)
+    }
   }
 }
 
@@ -152,13 +156,15 @@ refresh_data <- function(){
 }
 
 server <- function(input, output) {
+  # load data from file
+  datastore <- readRDS("data_for_each_criminal.rds")
+  part_data <- datastore$`Postępowania_wszczęte_zgwałcenie_w_latach_1999-2017`$CSV
   
   dane <- eventReactive(input$go, {
   })
+  
   show_plot1 <- eventReactive(input$show_plot1, {
-    #data_ <- read.csv("data_for_each_criminal.csv")
     data_ <- readRDS("data_for_each_criminal.rds")
-    print("odczytalem dane")
     data <- data_$`Postępowania_wszczęte_zgwałcenie_w_latach_1999-2017`$CSV
   })
   
@@ -175,16 +181,16 @@ server <- function(input, output) {
   
   
   output$plot <- renderPlotly({
-    #plot_ly(annual, x=~Year, y=~J.D,type = "scatter", mode="lines")
-    #scatter_plot("KWP Bydgoszcz", show_plot1())
-    scatter_plot(, show_plot1())
+    scatter_plot(data = show_plot1(), source = "firstplot")
   })
-
-  # output$plot2 <- renderPlotly({
-  #   mouse_event <- event_data("plotly_hover")
-  #   year <- mouse_event[3]
-  #   #monthly_subset <- monthly[monthly$Year==year$x,]
-  #   #plot_ly(monthly_subset, x=~Month, y=~Deviation, type = "scatter", mode="lines + points")
-  #   scatter_plot("KWP Bydgoszcz")
-  # })
+  
+  output$plot2 <- renderPlotly({
+    mouse_event <- event_data("plotly_click", source = "firstplot")
+    area <- mouse_event[5] # returns list not a string or integer... first should use unlist
+    if (length(area)){
+      scatter_plot(obszar = as.character(unlist(area)), data = part_data, mode = "line")
+    } else{
+      plotly_empty()
+    }
+  })
 }
